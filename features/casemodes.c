@@ -45,7 +45,7 @@
 #define IS_OSM(keycode) (keycode >= QK_ONE_SHOT_MOD && keycode <= QK_ONE_SHOT_MOD_MAX)
 
 // bool to keep track of the caps word state
-static bool caps_word_on = false;
+static bool _caps_word_on = false;
 
 // enum to keep track of the xcase state
 static enum xcase_state xcase_state = XCASE_OFF;
@@ -58,12 +58,12 @@ static int8_t delimiters_count = 0;
 
 // Check whether caps word is on
 bool caps_word_enabled(void) {
-    return caps_word_on;
+    return _caps_word_on;
 }
 
 // Enable caps word
 void enable_caps_word(void) {
-    caps_word_on = true;
+    _caps_word_on = true;
 #ifndef CAPSWORD_USE_SHIFT
     if (!host_keyboard_led_state().caps_lock) {
         tap_code(KC_CAPS);
@@ -73,7 +73,7 @@ void enable_caps_word(void) {
 
 // Disable caps word
 void disable_caps_word(void) {
-    caps_word_on = false;
+    _caps_word_on = false;
 #ifndef CAPSWORD_USE_SHIFT
     if (host_keyboard_led_state().caps_lock) {
         tap_code(KC_CAPS);
@@ -85,7 +85,7 @@ void disable_caps_word(void) {
 
 // Toggle caps word
 void toggle_caps_word(void) {
-    if (caps_word_on) {
+    if (_caps_word_on) {
         disable_caps_word();
     }
     else {
@@ -98,9 +98,14 @@ enum xcase_state get_xcase_state(void) {
     return xcase_state;
 }
 
+__attribute__ ((weak))
+void xcase_set_user(enum xcase_state state) {
+}
+
 // Enable xcase and pickup the next keystroke as the delimiter
 void enable_xcase(void) {
     xcase_state = XCASE_WAIT;
+    xcase_set_user(xcase_state);
 }
 
 // Enable xcase with the specified delimiter
@@ -109,18 +114,20 @@ void enable_xcase_with(uint16_t delimiter) {
     xcase_delimiter = delimiter;
     distance_to_last_delim = -1;
     delimiters_count = 0;
+    xcase_set_user(xcase_state);
 }
 
 // Disable xcase
 void disable_xcase(void) {
     xcase_state = XCASE_OFF;
+    xcase_set_user(xcase_state);
 }
 
 // Place the current xcase delimiter
 static void place_delimiter(void) {
     if (IS_OSM(xcase_delimiter)) {
         // apparently set_oneshot_mods() is dumb and doesn't deal with handedness for you
-        uint8_t mods = xcase_delimiter & 0x10 ? (xcase_delimiter & 0x0F) << 4 : xcase_delimiter & 0xFF;
+        uint8_t mods = QK_ONE_SHOT_MOD_GET_MODS(xcase_delimiter);
         set_oneshot_mods(mods);
     } else {
         tap_code16(xcase_delimiter);
@@ -136,6 +143,18 @@ static void remove_delimiter(void) {
             tap_code(KC_BSPC);
         }
     }
+}
+
+// __attribute__ ((weak))
+// bool is_alpha_keycode(uint16_t keycode) {
+//     return keycode >= KC_A && keycode <= KC_Z;
+// }
+
+__attribute__ ((weak))
+bool is_alpha_keycode(uint16_t keycode) {
+    return (keycode >= KC_A && keycode <= KC_O)
+        || (keycode >= KC_Q && keycode <= KC_Z)
+        || (keycode == KC_SCLN);
 }
 
 // overrideable function to determine whether the case mode should stop
@@ -176,7 +195,7 @@ bool use_default_xcase_separator(uint16_t keycode, const keyrecord_t *record) {
 }
 
 bool process_case_modes(uint16_t keycode, const keyrecord_t *record) {
-    if (caps_word_on || xcase_state) {
+    if (_caps_word_on || xcase_state) {
         if ((QK_MOD_TAP <= keycode && keycode <= QK_MOD_TAP_MAX)
             || (QK_LAYER_TAP <= keycode && keycode <= QK_LAYER_TAP_MAX)) {
             // Earlier return if this has not been considered tapped yet
@@ -264,7 +283,7 @@ bool process_case_modes(uint16_t keycode, const keyrecord_t *record) {
             }
 
 #ifdef CAPSWORD_USE_SHIFT
-            else if (caps_word_on && keycode >= KC_A && keycode <= KC_Z){
+            else if (_caps_word_on && is_alpha_keycode(keycode)){
                 tap_code16(LSFT(keycode));
                 return false;
             }
